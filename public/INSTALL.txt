@@ -1,0 +1,26 @@
+LITTLE MANDY — WEBSITE PACKAGE
+
+1. Upload all files and the assets folder together into /mandy/ on your website.
+2. Add this HTML wherever you want the animated character:
+
+<iframe src="/mandy/embed.html" title="Animated Mandy" style="width:100%;height:600px;border:0;background:transparent" loading="lazy"></iframe>
+
+The background is transparent. The 48-second story smoothly transitions from a
+hello to tennis, classroom learning, rowing, photography, and back. It respects the visitor's reduced-motion
+preference and pauses when offscreen.
+
+Optional: append ?activity=hello, ?activity=tennis, ?activity=teach,
+?activity=rowing, or ?activity=photography to the
+embed.html URL to loop a single activity. Append ?autoplay=0 to start paused.
+
+Open index.html through your website to see the full interactive showcase.
+The files must be served by a web server, not opened with a file:// URL.
+
+mandy.glb is the portable animated 3D model. It contains the Story, Hello,
+Tennis, Learning, Rowing, Photography, and Idle animation clips and the original reference face
+texture. Import it into Blender or load it using a GLTFLoader, then play a clip.
+
+The face is the original reference expression projected onto a curved 3D surface.
+The hair, body, clothing, shoes, racket, ball, classroom board, boat, oars, and
+camera are 3D geometry. The board contains maths, science, art/design, and
+economics notes, with no programme title or slogan.
