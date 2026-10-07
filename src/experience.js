@@ -20,6 +20,9 @@ export async function createMandyExperience(container,{autoplay=true,onProgress=
   const camera=new THREE.PerspectiveCamera(32,1,.1,40);
   const controls=new OrbitControls(camera,renderer.domElement);controls.target.set(.35,2.18,0);
   controls.enabled=interactive;
+  // Let wheel/trackpad scrolling and vertical touch gestures navigate the page.
+  controls.enableZoom=false;
+  renderer.domElement.style.touchAction='pan-y';
   controls.enableDamping=true;controls.dampingFactor=.07;controls.enablePan=false;
   controls.minDistance=5.8;controls.maxDistance=13;controls.minPolarAngle=.8;controls.maxPolarAngle=1.65;
   const resetCamera=()=>{
@@ -82,6 +85,12 @@ export async function createMandyExperience(container,{autoplay=true,onProgress=
     else if(activity==='story')current.time=0;
     mode=activity;playing=true;
   };
+  function zoomBy(factor){
+    const distance=camera.position.distanceTo(controls.target);
+    const nextDistance=THREE.MathUtils.clamp(distance*factor,controls.minDistance,controls.maxDistance);
+    camera.position.sub(controls.target).multiplyScalar(nextDistance/distance).add(controls.target);
+    controls.update();renderer.render(scene,camera);
+  }
   async function exportGLB(){
     // Export from the undeformed hierarchy; animated samples and all hidden props remain in the file.
     const wasPlaying=playing;playing=false;
@@ -95,7 +104,7 @@ export async function createMandyExperience(container,{autoplay=true,onProgress=
     const geometries=new Set(),materials=new Set(),textures=new Set();scene.traverse(o=>{if(o.geometry)geometries.add(o.geometry);for(const m of o.material?(Array.isArray(o.material)?o.material:[o.material]):[]){materials.add(m);for(const value of Object.values(m))if(value?.isTexture)textures.add(value);}});
     geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());textures.forEach(t=>t.dispose());environment.dispose();renderer.dispose();renderer.domElement.remove();
   }
-  return {play,pause:()=>{playing=false;},resume:()=>{playing=true;lastTime=performance.now();},toggle:()=>{playing=!playing;return playing;},resetCamera,dispose,exportGLB,
+  return {play,pause:()=>{playing=false;},resume:()=>{playing=true;lastTime=performance.now();},toggle:()=>{playing=!playing;return playing;},zoomIn:()=>zoomBy(.88),zoomOut:()=>zoomBy(1/.88),resetCamera,dispose,exportGLB,
     seek:(time)=>{current.time=THREE.MathUtils.clamp(time,0,current.getClip().duration);mixer.update(0);updateFraming();controls.update();renderer.render(scene,camera);},
     get playing(){return playing;},get mode(){return mode;},get playbackRate(){return rate;},get stats(){return {triangles:renderer.info.render.triangles,drawCalls:renderer.info.render.calls};},renderer,scene,model,camera,clips,
   };

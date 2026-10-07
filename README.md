@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite. Drag to rotate, scroll to zoom, select a chapter, or play the full story. The controls blend between activities over 1.15 seconds; the story uses 1.8-second eased transitions. The face retains the reference expression during the animation.
+Open the local URL printed by Vite. Drag to rotate, use the + / − buttons to zoom, scroll the page, select a chapter, or play the full story. The ↺ button restores the original view. Mouse-wheel and trackpad scrolling are reserved for page navigation; vertical touch swipes also scroll the page. The controls blend between activities over 1.15 seconds; the story uses 1.8-second eased transitions. The face retains the reference expression during the animation.
 
 ## Add to your website
 

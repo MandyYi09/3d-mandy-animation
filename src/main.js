@@ -34,5 +34,6 @@ try{
   }));
   $('#sequence-button').addEventListener('click',()=>{experience.play('story');$('#sequence-button').classList.add('active');$('#sequence-button').setAttribute('aria-pressed','true');$('#player-title').textContent='A day in my little world';$('#player-caption').textContent='HELLO → TENNIS → LEARN → ROWING → PHOTO';});
   $('#play-toggle').addEventListener('click',()=>experience.toggle());$('#reset-view').addEventListener('click',experience.resetCamera);
+  $('#zoom-in').addEventListener('click',experience.zoomIn);$('#zoom-out').addEventListener('click',experience.zoomOut);
 }catch(error){console.error(error);$('#loader').innerHTML='<span class="loader-flower">✳</span><p>The 3D scene couldn’t load. Please refresh in a browser with WebGL enabled.</p>';}
 })();
