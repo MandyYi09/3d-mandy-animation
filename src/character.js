@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const V = (p) => new THREE.Vector3(...p);
+// Lower the forehead edge; the crown keeps its independently defined height.
+const lowerHairlineProfile = y => y - .20 * THREE.MathUtils.smoothstep(y,3.38,4.25);
 const sphereGeometry = new THREE.SphereGeometry(1, 32, 24);
 const materials = {};
 function mat(color, roughness = .6, metalness = 0) {
@@ -12,8 +13,8 @@ function mat(color, roughness = .6, metalness = 0) {
 const M = {
   skin: mat('#e9b17e', .75), skinShadow: mat('#cd976b'), cream: mat('#f3eedf', .88),
   white: mat('#fff9ec', .67), burgundy: mat('#752b36', .6), navy: mat('#293343', .91),
-  navyLight: mat('#344051', .95), hair: mat('#211b19', .38), hair2: mat('#2b2320', .43),
-  hair3: mat('#322822', .44), hairLine: mat('#45372b', .51), sole: mat('#dedacb', .8),
+  navyLight: mat('#344051', .95), hair: mat('#211b19', .65), hair2: mat('#29221f', .69),
+  hair3: mat('#2d2521', .70), hairLine: mat('#382d25', .75), sole: mat('#dedacb', .8),
   gold: mat('#bd9860', .35, .5), black: mat('#292924', .38), green: mat('#bdd14e', .95),
   wood: mat('#b18353', .79), chalk: mat('#eeeade', .95), board: mat('#304439', .92),
 };
@@ -47,49 +48,6 @@ function shapeMesh(parent, points, material, depth = .025) {
   return mesh(parent, new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelThickness: .007, bevelSize: .006, bevelSegments: 2, steps: 1 }), material);
 }
 
-// A tapered, flattened sweep makes each lock a volume, including at the back.
-function hairLock(parent, points, width, depth, material, grooves = true, rootOffset = .09, grooveDirection = null) {
-  const path = new THREE.CatmullRomCurve3(points.map(V));
-  const rings = 64, sides = 16;
-  const frames = path.computeFrenetFrames(rings, false), positions = [], indices = [];
-  for (let i = 0; i <= rings; i++) {
-    const t = i / rings, p = path.getPointAt(t);
-    const taper = Math.max(.014, Math.pow(Math.sin(Math.PI * (rootOffset + (1 - rootOffset) * t)), .5));
-    for (let j = 0; j <= sides; j++) {
-      const a = j / sides * Math.PI * 2;
-      const v = p.clone().addScaledVector(frames.normals[i], Math.cos(a) * width * taper).addScaledVector(frames.binormals[i], Math.sin(a) * depth * taper);
-      positions.push(...v.toArray());
-      if (i < rings && j < sides) { const n = i * (sides + 1) + j; indices.push(n, n + 1, n + sides + 1, n + 1, n + sides + 2, n + sides + 1); }
-    }
-  }
-  // Seal both ends: an exposed root must never show the inside of a hollow tube.
-  const start = positions.length / 3; positions.push(...path.getPointAt(0).toArray());
-  const end = positions.length / 3; positions.push(...path.getPointAt(1).toArray());
-  for (let j = 0; j < sides; j++) {
-    indices.push(start, j + 1, j);
-    const n = rings * (sides + 1) + j; indices.push(end, n, n + 1);
-  }
-  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3)); geo.setIndex(indices);
-  const sealed = mergeVertices(geo, .000001); sealed.computeVertexNormals(); geo.dispose();
-  mesh(parent, sealed, material).name = 'HairLock';
-  if (grooves) {
-    for (const offset of [-.38, .3]) {
-      const line = [];
-      for (let i = 2; i < rings - 3; i += 2) {
-        const t = i / rings, taper = Math.pow(Math.sin(Math.PI * (rootOffset + (1 - rootOffset) * t)), .5);
-        const p = path.getPointAt(t);
-        if (grooveDirection) {
-          const direction = V(grooveDirection);
-          const a = Math.atan2(depth * direction.dot(frames.binormals[i]), width * direction.dot(frames.normals[i])) + offset;
-          p.addScaledVector(frames.normals[i], width * taper * Math.cos(a) * 1.005).addScaledVector(frames.binormals[i], depth * taper * Math.sin(a) * 1.005);
-        } else p.addScaledVector(frames.normals[i], width * taper * offset).addScaledVector(frames.binormals[i], depth * taper * .97);
-        line.push(p.toArray());
-      }
-      curve(parent, line, .004, M.hairLine, 30);
-    }
-  }
-}
-
 // Image-space outline follows the visible skin in the supplied frontal portrait.
 // UVs preserve the original facial features instead of replacing them with generic eyes/lips.
 function referenceFace(texture) {
@@ -103,14 +61,11 @@ function referenceFace(texture) {
     for (let col = 0; col <= colCount; col++) {
       const u = col / colCount, px = THREE.MathUtils.lerp(left, right, u);
       const x = (px - 580) / 285, y = 3.25 + (420 - py) / 285;
-      const across = (u - .5) * 2;
-      // The narrow hairline must flatten with its width, otherwise the forehead
-      // ends in a forward-projecting fin that becomes visible from above.
-      const foreheadDepth = py < 310 ? THREE.MathUtils.smoothstep(right - left, 22, 115) : 1;
-      let z = .24 + .34 * foreheadDepth * Math.sqrt(Math.max(0, 1 - across * across)) * Math.pow(Math.sin(Math.PI * (.12 + row / rowCount * .80)), .32);
-      // Ease the small hollow at the left hairline into the forehead surface.
-      const templeBlend = THREE.MathUtils.smoothstep(py, 255, 300) * (1 - THREE.MathUtils.smoothstep(py, 345, 395));
-      z += .075 * templeBlend * Math.exp(-((u / .28) ** 2));
+      // Fit the portrait to one head-sized ellipsoid. Normalising the depth
+      // to each row's hairline width made the forehead a separate wedge and
+      // pinched the temples when viewed from above.
+      const headX=x/.70, headY=(y-3.29)/.83;
+      let z=.015+.56*Math.sqrt(Math.max(.025,1-headX*headX-headY*headY));
       const bump = (cx, cy, rx, ry, height) => height * Math.exp(-(((px - cx) / rx) ** 2) - ((py - cy) / ry) ** 2);
       z += bump(579, 490, 29, 33, .14) + bump(581, 541, 42, 17, .033);
       z += bump(488, 435, 42, 29, .025) + bump(658, 433, 42, 29, .025);
@@ -189,131 +144,155 @@ function buildHeadShell(head, face) {
   mesh(head, geo, new THREE.MeshBasicMaterial({vertexColors:true,toneMapped:false})).name = 'HeadShell';
 }
 
-// Fill only the space behind the original fringe with hair from the same portrait.
-// The strips meet the existing facial boundary, leaving every facial vertex/UV intact.
-function buildHairlineInfill(head, face) {
-  const positions = [], uvs = [], indices = [];
-  const outline = [[140,570,610],[165,510,652],[195,470,680],[237,450,700],
-    [280,423,722],[340,395,740],[390,385,761],[440,395,777]];
-  const bounds = py => {
-    let k = 0; while (k < outline.length - 2 && outline[k + 1][0] < py) k++;
-    const a = outline[k], b = outline[k + 1], f = (py - a[0]) / (b[0] - a[0]);
-    return [THREE.MathUtils.lerp(a[1], b[1], f), THREE.MathUtils.lerp(a[2], b[2], f)];
+// One continuous scalp surface meets the portrait's actual hairline. The part
+// runs front-to-back through this mesh, instead of stacking separate root caps
+// over the photographed part. The same surface continues down to the tips.
+function buildHairCrown(hair, face) {
+  const across = 128, along = 96, stride = along + 1;
+  const positions = [], colors = [], indices = [], uvs = [];
+  const front = face.geometry.getAttribute('position');
+  const sections = [-1, 1].map(side => [
+    [[.035,3.892,.24],[side*.22,3.74,.24],[side*.45,3.43,.24],[side*.58,3.19,.24],
+      [side*.63,2.92,.28],[side*.72,2.58,.30],[side*.59,2.18,.23]],
+    [[.035,4.13,.30],[side*.27,4.035,.43],[side*.52,3.72,.46],[side*.68,3.18,.34],
+      [side*.68,2.92,.30],[side*.78,2.58,.30],[side*.68,2.14,.20]],
+    [[.015,4.28,-.10],[side*.35,4.20,-.02],[side*.66,3.89,.035],[side*.79,3.17,.015],
+      [side*.76,2.90,.01],[side*.84,2.55,.015],[side*.71,2.13,-.02]],
+    [[0,4.10,-.50],[side*.35,4.02,-.49],[side*.65,3.70,-.50],[side*.77,3.15,-.38],
+      [side*.73,2.90,-.36],[side*.81,2.54,-.32],[side*.66,2.17,-.28]],
+    [[0,3.48,-.69],[side*.30,3.48,-.67],[side*.58,3.40,-.60],[side*.69,3.14,-.47],
+      [side*.68,2.90,-.47],[side*.72,2.54,-.44],[side*.60,2.17,-.38]],
+    [[0,2.17,-.49],[side*.12,2.18,-.49],[side*.25,2.18,-.47],[side*.37,2.18,-.45],
+      [side*.46,2.17,-.42],[side*.55,2.15,-.38],[side*.60,2.14,-.34]],
+  ].map(points => new THREE.CatmullRomCurve3(points.map(V))));
+  const hairline = u => {
+    if (Math.abs(u) <= .0225) {
+      const col = Math.round((u / .0225 + 1) * 36);
+      return new THREE.Vector3().fromBufferAttribute(front, col).add(new THREE.Vector3(0,3.18,0));
+    }
+    if (Math.abs(u) > .5) return sections[u < 0 ? 0 : 1][0].getPoint(Math.abs(u));
+    const row = (Math.abs(u) - .0225) / .4775 * 52;
+    const lo = Math.floor(row), hi = Math.min(52, lo + 1), side = u < 0 ? 0 : 72;
+    return new THREE.Vector3().fromBufferAttribute(front,lo*73+side)
+      .lerp(new THREE.Vector3().fromBufferAttribute(front,hi*73+side),row-lo).add(new THREE.Vector3(0,3.18,0));
   };
-  const vertex = (px, py, z) => {
-    positions.push((px - 580) / 285, .07 + (420 - py) / 285, z);
-    uvs.push(px / 1122, 1 - py / 1402);
-  };
-  const front = face.geometry.getAttribute('position'), uv = face.geometry.getAttribute('uv');
-  const rows = 52, columns = 20;
-  for (const side of [0, 1]) {
-    const offset = positions.length / 3;
-    for (let row = 0; row <= rows; row++) {
-      const edge = row * 73 + side * 72;
-      const px = uv.getX(edge) * 1122, py = (1 - uv.getY(edge)) * 1402;
-      const outer = THREE.MathUtils.lerp(bounds(py)[side], px, THREE.MathUtils.smoothstep(py, 370, 436));
-      for (let col = 0; col <= columns; col++) {
-        const f = col / columns;
-        vertex(THREE.MathUtils.lerp(px, outer, f), py, front.getZ(edge));
-        if (row < rows && col < columns) {
-          const n = offset + row * (columns + 1) + col;
-          if (side) indices.push(n, n + columns + 1, n + 1, n + 1, n + columns + 1, n + columns + 2);
-          else indices.push(n, n + 1, n + columns + 1, n + 1, n + columns + 2, n + columns + 1);
-        }
+  for (let i = 0; i <= across; i++) {
+    const u = i / across * 2 - 1, width = Math.abs(u);
+    const anchors = sections[u < 0 ? 0 : 1].map(section => section.getPoint(width));
+    anchors[0] = hairline(u);
+    const sweep = new THREE.CatmullRomCurve3(anchors);
+    for (let j = 0; j <= along; j++) {
+      const v = j / along, point = sweep.getPoint(v);
+      // Shallow flowing relief is part of the scalp itself: no raised tube roots.
+      const flow = THREE.MathUtils.lerp(v * Math.PI * 28 + width * 2.5, point.x * Math.PI * 28 + Math.sin(point.y*5)*.4, THREE.MathUtils.smoothstep(v,.42,.76));
+      const relief = (.015 * Math.cos(flow) + .0018 * Math.cos(flow*5.3)) * Math.sin(Math.PI*v) * Math.sin(Math.PI*Math.min(.5,width));
+      point.y += relief;
+      point.z += relief * Math.sin(Math.PI*v);
+      // A narrow recessed part, fading precisely into the original hairline.
+      const part = Math.exp(-((u/.022)**2)) * Math.sin(Math.PI*Math.min(1,v/.8));
+      point.y -= .018*part;
+      point.y += .06 * Math.cos(v*Math.PI*18 + .6) * THREE.MathUtils.smoothstep(width,.84,1);
+      point.x += Math.sign(u) * .012 * Math.sin(flow) * THREE.MathUtils.smoothstep(width,.55,.85);
+      positions.push(...point.toArray());
+      uvs.push(i/across,j/along);
+      const tint = 1 - .4*part + .07*Math.cos(flow)*Math.sin(Math.PI*v);
+      colors.push(tint,tint,tint);
+      if (i < across && j < along) {
+        const n=i*stride+j; indices.push(n,n+stride,n+1,n+1,n+stride,n+stride+1);
       }
     }
   }
-  const offset = positions.length / 3;
-  for (let row = 0; row <= 28; row++) {
-    const py = 140 + 97 * row / 28, [left, right] = bounds(py);
-    for (let col = 0; col <= 56; col++) {
-      vertex(THREE.MathUtils.lerp(left, right, col / 56), py, .24);
-      if (row < 28 && col < 56) {
-        const n = offset + row * 57 + col;
-        indices.push(n, n + 57, n + 1, n + 1, n + 57, n + 58);
-      }
-    }
+  // Lower only the frontal hairline, easing out before reaching the crown.
+  // Keep the original projection coordinates so the strands move with the mesh.
+  const projectionPositions = [...positions];
+  const cheekFullness=y=>THREE.MathUtils.smoothstep(y,2.48,2.88)*(1-THREE.MathUtils.smoothstep(y,3.16,3.52));
+  for (let i=0;i<positions.length/3;i++) {
+    const v=(i%stride)/along, y=positions[i*3+1];
+    const hairlineWeight=1-THREE.MathUtils.smoothstep(v,0,.32);
+    positions[i*3+1]=THREE.MathUtils.lerp(y,lowerHairlineProfile(y),hairlineWeight);
+    // Bring the leading edge toward the cheeks while rounding the outer side.
+    // Fade in below the temple so the existing forehead boundary stays joined.
+    const width=Math.abs(Math.floor(i/stride)/across*2-1);
+    const fullness=cheekFullness(y)*THREE.MathUtils.smoothstep(width,.48,.60);
+    const inner=1-THREE.MathUtils.smoothstep(v,0,.16);
+    const outer=THREE.MathUtils.smoothstep(v,0,.16)*(1-THREE.MathUtils.smoothstep(v,.60,.80));
+    positions[i*3]+=Math.sign(positions[i*3])*fullness*(-.10*inner+.06*outer);
+    positions[i*3+2]+=.045*fullness*(1-THREE.MathUtils.smoothstep(v,.42,.65));
+  }
+  // Close the scalp behind the visible surface; all perimeter edges are shared.
+  const count = positions.length / 3;
+  for (let i=0;i<count;i++) {
+    const thickness=cheekFullness(positions[i*3+1])*THREE.MathUtils.smoothstep(Math.abs(positions[i*3]),.48,.65);
+    positions.push(positions[i*3]*.96-Math.sign(positions[i*3])*.025*thickness,
+      positions[i*3+1]-.035,positions[i*3+2]-.025-.035*thickness);
+    colors.push(.7,.7,.7);uvs.push(uvs[i*2],uvs[i*2+1]);
+  }
+  const outer = [...indices];
+  for (let i=0;i<outer.length;i+=3) indices.push(outer[i]+count,outer[i+2]+count,outer[i+1]+count);
+  const rim = [];
+  for(let j=0;j<=along;j++)rim.push(j);
+  for(let i=1;i<=across;i++)rim.push(i*stride+along);
+  for(let j=along-1;j>=0;j--)rim.push(across*stride+j);
+  for(let i=across-1;i>0;i--)rim.push(i*stride);
+  for(let i=0;i<rim.length;i++) {
+    const a=rim[i],b=rim[(i+1)%rim.length];indices.push(a,b,b+count,a,b+count,a+count);
   }
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-  geometry.setIndex(indices); geometry.computeVertexNormals();
-  mesh(head, geometry, new THREE.MeshBasicMaterial({map:face.material.map,toneMapped:false})).name = 'HairlineInfill';
-}
-
-// A recessed, matte lining only blocks light through the spaces between locks.
-// It must not reflect like a second shell over the forehead.
-function buildHairCrown(hair) {
-  const around = 216, rows = 80, stride = around + 1;
-  const positions = [], colors = [], indices = [], surfaceSize = (rows + 1) * stride;
-  const smooth = THREE.MathUtils.smoothstep;
-  for (let wall = 0; wall < 2; wall++) {
-    for (let row = 0; row <= rows; row++) {
-      for (let col = 0; col <= around; col++) {
-        const phi = col / around * Math.PI * 2, frontAngle = Math.acos(Math.cos(phi));
-        const upperEnd = .29 + .16 * smooth(frontAngle, 0, 1.45);
-        const length = THREE.MathUtils.lerp(upperEnd, 1, smooth(frontAngle, 1.05, 1.50));
-        const s = row / rows * length, theta = Math.min(s / .44, 1) * Math.PI / 2;
-        const fall = Math.max(0, (s - .44) / .56), radial = Math.sin(theta);
-        const flow = phi * 18 + 1.1 * Math.sin(s * 5) * smooth(s, .28, .7);
-        const bundle = Math.pow((1 + Math.cos(flow)) / 2, 2);
-        const ridge = .025 * fall * Math.pow(radial, 1.6) * bundle;
-        const wave = .08 * Math.sin(fall * Math.PI * 1.65) * fall;
-        const thickness = wall * .065;
-        const beneathLocks = smooth(s, .40, .80) * smooth(frontAngle, 1.05, 1.5);
-        const rx = (.74 + .045 * Math.sin(fall * Math.PI) + wave - .08 * beneathLocks - thickness) * radial;
-        const frontRecess = .40 * Math.pow(Math.max(0, Math.cos(phi)), 6) * smooth(s, .08, .29);
-        const rz = (.61 - frontRecess - .07 * fall + wave - .08 * beneathLocks - thickness) * radial;
-        const relief = wall ? 0 : ridge;
-        const y = 3.47 + .83 * Math.cos(theta) - 1.35 * fall
-          + (.12 - .16 * bundle + .025 * Math.sin(phi * 7)) * smooth(fall, .55, 1)
-          + .25 * beneathLocks * smooth(fall, .5, 1) - thickness * (1 - radial);
-        positions.push(Math.sin(phi) * (rx + relief), y, -.10 + Math.cos(phi) * (rz + relief));
-        const tint = wall ? .38 : 1;
-        colors.push(tint, tint, tint);
-        if (row < rows && col < around) {
-          const n = wall * surfaceSize + row * stride + col;
-          if (wall) indices.push(n, n + 1, n + stride, n + 1, n + stride + 1, n + stride);
-          else indices.push(n, n + stride, n + 1, n + 1, n + stride, n + stride + 1);
-        }
-      }
-    }
+  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+  geometry.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
+  geometry.setIndex(indices);geometry.computeVertexNormals();
+  // Project the reference strands onto the same curved scalp, fading into
+  // flowing strand colour around the back. There is no second hairline plane.
+  const source=face.material.map.image, sourceCanvas=document.createElement('canvas');
+  sourceCanvas.width=source.width;sourceCanvas.height=source.height;
+  const sourceContext=sourceCanvas.getContext('2d');sourceContext.drawImage(source,0,0);
+  const pixels=sourceContext.getImageData(0,0,source.width,source.height).data;
+  const canvas=document.createElement('canvas');canvas.width=canvas.height=1024;
+  const context=canvas.getContext('2d'), atlas=context.createImageData(1024,1024);
+  for(let y=0;y<1024;y++)for(let x=0;x<1024;x++) {
+    const u=x/1023, v=1-y/1023, fi=u*across, fj=v*along;
+    const i=Math.min(across-1,Math.floor(fi)),j=Math.min(along-1,Math.floor(fj));
+    const a=fi-i,b=fj-j;
+    const interpolate=(values,axis)=>THREE.MathUtils.lerp(
+      THREE.MathUtils.lerp(values[(i*stride+j)*3+axis],values[((i+1)*stride+j)*3+axis],a),
+      THREE.MathUtils.lerp(values[(i*stride+j+1)*3+axis],values[((i+1)*stride+j+1)*3+axis],a),b);
+    const coord=axis=>interpolate(positions,axis);
+    const projected=axis=>interpolate(projectionPositions,axis);
+    // The fuller cheek section needs hair samples outside the portrait's ears.
+    const side=Math.sign(u-.5), cheekSample=22*cheekFullness(projected(1));
+    const px=THREE.MathUtils.clamp(Math.round(580+projected(0)*285+side*(2+cheekSample)),0,source.width-1);
+    const py=THREE.MathUtils.clamp(Math.round(420-(projected(1)-3.25)*285-3),0,source.height-1);
+    const sample=(py*source.width+px)*4, out=(y*1024+x)*4;
+    const flow=THREE.MathUtils.lerp(v*Math.PI*64+Math.abs(u-.5)*3,coord(0)*Math.PI*76+Math.sin(coord(1)*5+coord(0)*2)*.5,THREE.MathUtils.smoothstep(v,.42,.76));
+    // At the ends, follow the surface's lengthwise strand coordinates rather
+    // than projecting the portrait's bright crosswise curl highlights.
+    const variation=1+.075*Math.sin(flow)+.04*Math.sin(flow*4.7)+.018*Math.sin(flow*13.1)
+      +.025*Math.sin(flow*.43+Math.abs(u-.5)*4);
+    const referenceLength=THREE.MathUtils.smoothstep(projected(1),2.70,3.22);
+    let blend=(1-THREE.MathUtils.smoothstep(v,.22,.42))*referenceLength;
+    const r=pixels[sample],g=pixels[sample+1],bColour=pixels[sample+2];
+    if((r>210&&g>210&&bColour>200)||(r>55&&r>g*1.5&&r>bColour*2))blend=0;
+    for(let c=0;c<3;c++)atlas.data[out+c]=THREE.MathUtils.lerp([43,36,31][c]*variation,pixels[sample+c],blend);
+    atlas.data[out+3]=255;
   }
-  for (let col = 0; col < around; col++) {
-    const a = rows * stride + col, b = a + surfaceSize;
-    indices.push(a, b, a + 1, a + 1, b, b + 1);
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geometry.setIndex(indices);
-  const joined = mergeVertices(geometry, .000001); joined.computeVertexNormals(); geometry.dispose();
-  const material = M.hair.clone(); material.roughness = .82; material.envMapIntensity = .15; material.vertexColors = true;
-  mesh(hair, joined, material).name = 'HairCrown';
+  context.putImageData(atlas,0,0);
+  const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
+  const material=new THREE.MeshStandardMaterial({map:texture,color:'#808080',roughness:.8,
+    emissiveMap:texture,emissive:'#ffffff',emissiveIntensity:.6,vertexColors:true});
+  mesh(hair,geometry,material).name='HairCrown';
 }
 
 function buildHair(head, face) {
   const hair = group(head, 'Hair', [0, -3.18, 0]);
-  buildHairCrown(hair);
-  buildHairlineInfill(head, face);
-  // Original rear colours and waves; roots continue under the crown to close gaps.
-  for (let i = 0; i < 15; i++) {
-    const a = Math.PI * .43 + i / 14 * Math.PI * 1.14;
-    const x = Math.sin(a), z = Math.cos(a);
-    hairLock(hair, [[x*.025,4.30,-.10+z*.025],[x*.25,4.24,z*.23-.10],[x*.54,4.02,z*.45-.10],
-      [x*.70,3.55,z*.58-.10],[x*.70,2.95,z*.55-.08],[x*.76+Math.sin(i)*.08,2.56,z*.49-.10],
-      [x*.69,2.16+(i%3)*.07,z*.48-.06],[x*.57,2.02+(i%4)*.08,z*.42]],
-      .15,.12,i%3===0?M.hair2:M.hair,false,0);
+  buildHairCrown(hair, face);
+  // The portrait and its stitched shell share the same upper boundary as the
+  // hair. Moving that boundary together avoids overlaps or a floating fringe.
+  for(const object of [face,head.getObjectByName('HeadShell')]) {
+    const positions=object.geometry.getAttribute('position');
+    for(let i=0;i<positions.count;i++)positions.setY(i,lowerHairlineProfile(positions.getY(i)+3.18)-3.18);
+    positions.needsUpdate=true;object.geometry.computeVertexNormals();
   }
-  for (const s of [-1, 1]) {
-    for (let i = 0; i < 6; i++) {
-      const spread = i * .025, startX = s * (.035 + i * .031);
-      hairLock(hair, [[startX,4.25-i*.013,.09-i*.035],[s*(.30+spread),4.17-i*.029,.34-i*.027],[s*(.51+spread),3.91-i*.053,.49-i*.025],[s*(.65+spread),3.54-i*.045,.49-i*.037],[s*(.77+spread),3.20-i*.045,.34-i*.029],[s*(.73+spread),2.91-i*.06,.31-i*.026],[s*(.81+spread),2.64-i*.07,.32-i*.028],[s*(.65+spread),2.41-i*.064,.37-i*.03],[s*(.66+spread),2.23-i*.045,.24-i*.025]], .115 + i*.009, .09, [M.hair2,M.hair,M.hair3][i%3]);
-    }
-  }
-  // The inner swept fringe follows the asymmetric part of the reference portrait.
-  hairLock(hair, [[.07,4.19,.33],[-.17,4.11,.49],[-.36,3.83,.60],[-.48,3.60,.58],[-.64,3.37,.44],[-.76,3.23,.29]], .10, .075, M.hair2);
-  hairLock(hair, [[.085,4.18,.33],[.25,4.07,.51],[.36,3.85,.57],[.47,3.59,.53],[.56,3.39,.44],[.68,3.19,.26]], .083, .07, M.hair);
   return hair;
 }
 
@@ -330,15 +309,16 @@ function buildShoe(parent) {
   curve(parent, [[-.16,.24,.28],[0,.275,.38],[.16,.24,.28]], .004, M.sole, 16);
 }
 
-function buildHand(parent, name) {
+function buildHand(parent, name, side) {
   const hand = group(parent, name, [0, -.45, 0]);
   ellipsoid(hand, [0, -.07, .01], [.112, .145, .065], M.skin);
   for (let i = 0; i < 4; i++) {
-    const x = -.077 + i * .048, length = [.125,.16,.17,.13][i];
+    const x = side * (.077 - i * .048), length = [.125,.16,.17,.13][i];
     rod(hand, [x,-.13,.01], [x*1.15,-.13-length,.015], .025, .02, M.skin);
     ellipsoid(hand, [x*1.15,-.13-length,.015], [.022,.024,.024], M.skin);
   }
-  rod(hand, [-.075,-.045,.016], [-.15,-.14,.055], .043,.033,M.skin);
+  rod(hand, [side*.075,-.045,.016], [side*.15,-.14,.055], .043,.033,M.skin);
+  ellipsoid(hand, [side*.15,-.14,.055], [.033,.033,.033], M.skin);
   return hand;
 }
 
@@ -501,7 +481,7 @@ export async function createCharacter() {
     const forearm=group(arm,`${name}Forearm`,[0,-.46,.018]);
     ellipsoid(forearm,[0,-.015,0],[.096,.115,.096],M.skin);
     rod(forearm,[0,0,0],[0,-.36,.018],.096,.07,M.skin);
-    const hand=buildHand(forearm,`${name}Hand`);hand.position.y=-.33;
+    const hand=buildHand(forearm,`${name}Hand`,s);hand.position.y=-.33;
     group(hand,`${name}PalmGrip`,[0,-.12,.02]);
     arms[name]={arm,forearm,hand};
   }

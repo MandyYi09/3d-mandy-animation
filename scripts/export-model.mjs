@@ -28,10 +28,9 @@ try {
     const expected=['Story','Hello','Tennis','Learning','Rowing','Photography','Idle'];
     if(JSON.stringify(loaded.animations.map(clip=>clip.name))!==JSON.stringify(expected))throw new Error('The exported animation clips are incomplete.');
     if(!loaded.scene.getObjectByName('OriginalReferenceFace')?.material?.map)throw new Error('The original face texture is missing.');
-    if(!loaded.scene.getObjectByName('HairlineInfill')?.material?.map)throw new Error('The reference hairline infill is missing.');
     const headShell=loaded.scene.getObjectByName('HeadShell');
     if(!headShell||!(headShell.geometry||headShell.children.some(child=>child.geometry)))throw new Error('The repaired head shell is missing.');
-    if(!loaded.scene.getObjectByName('HairCrown')?.geometry)throw new Error('The continuous crown and back hair are missing.');
+    if(!loaded.scene.getObjectByName('HairCrown')?.geometry || !loaded.scene.getObjectByName('HairCrown')?.material?.map)throw new Error('The continuous textured hair surface is missing.');
     if(!loaded.scene.getObjectByName('ClassroomNotes')?.material?.map)throw new Error('The classroom notes texture is missing.');
     const mixer=new AnimationMixer(loaded.scene);mixer.clipAction(loaded.animations[0]).play();
     mixer.setTime(28);

@@ -12,7 +12,7 @@ try{
   await page.waitForFunction(()=>!!window.mandy,null,{timeout:60000});
   await page.evaluate(()=>window.mandy.renderer.setAnimationLoop(null));
   await mkdir('artifacts',{recursive:true});
-  for(const [name,angle,mode,time,elevation=.047] of [['front',0,'idle',0],['right',Math.PI/3,'idle',0],['left',-Math.PI/3,'idle',0],['back',Math.PI,'idle',0],['photo',.55,'photography',3],['wave',-.55,'hello',1],['front-high',0,'teach',3,.70],['left-high',-.55,'teach',3,.70],['right-high',.55,'teach',3,.70],['back-high',Math.PI,'idle',0,.70]].filter(([name])=>!process.env.HEAD_VIEWS||process.env.HEAD_VIEWS.split(',').includes(name))){
+  for(const [name,angle,mode,time,elevation=.047] of [['fringe',-.15,'idle',0,.60],['fringe-side',-.55,'idle',0,.60],['front',0,'idle',0],['right',Math.PI/3,'idle',0],['left',-Math.PI/3,'idle',0],['back',Math.PI,'idle',0],['photo',.55,'photography',3],['wave',-.55,'hello',1],['front-high',0,'teach',3,.70],['left-high',-.55,'teach',3,.70],['right-high',.55,'teach',3,.70],['back-high',Math.PI,'idle',0,.70]].filter(([name])=>!process.env.HEAD_VIEWS||process.env.HEAD_VIEWS.split(',').includes(name))){
     await page.evaluate(({angle,mode,time,elevation})=>{
       const m=window.mandy;m.play(mode,{transition:false});m.pause();m.seek(time);
       m.camera.position.set(Math.sin(angle)*Math.cos(elevation)*4.9,3.32+Math.sin(elevation)*4.9,Math.cos(angle)*Math.cos(elevation)*4.9);m.camera.lookAt(0,3.32,0);m.camera.updateMatrixWorld();m.renderer.render(m.scene,m.camera);
@@ -71,18 +71,24 @@ try{
     }
     mixer.stopAllAction();mixer.uncacheRoot(model.world);
     const normals=face.geometry.getAttribute('normal');
+    const crown=model.hair.getObjectByName('HairCrown').geometry;
+    crown.computeBoundingBox();
+    const crownHeight=crown.boundingBox.max.y;
+    const hairlineHeight=Math.max(...Array.from({length:73},(_,i)=>positions.getY(i)))+3.18;
     const hairlineDepth=Math.max(...Array.from({length:73},(_,i)=>positions.getZ(i)))-Math.min(...Array.from({length:73},(_,i)=>positions.getZ(i)));
-    return {headOpenEdges:openEdges([face.geometry,shell.geometry]), crownOpenEdges:openEdges([model.hair.getObjectByName('HairCrown').geometry]), hairlineDepth,
+    return {crownHeight,hairlineHeight,headOpenEdges:openEdges([face.geometry,shell.geometry]), crownOpenEdges:openEdges([model.hair.getObjectByName('HairCrown').geometry]), hairlineDepth,
       unsealedLocks:hairLocks.filter(o=>openEdges([o.geometry])!==0).length, hairLocks:hairLocks.length,
       outwardFace:face.material.side===FrontSide&&Array.from({length:normals.count},(_,i)=>normals.getZ(i)).every(z=>z>0),
       cameraIntersections,minimumCameraGap,maxGripError};
   });
   console.log(JSON.stringify(checks,null,2));
+  assert.ok(checks.crownHeight>4.24,'Lowering the hairline must not flatten the crown');
+  assert.ok(checks.hairlineHeight<3.80,'Restoring the crown must not raise the frontal hairline');
   assert.equal(checks.headOpenEdges,0,'Head has an open seam');
   assert.equal(checks.unsealedLocks,0,'Hair locks have open ends');
   assert.equal(checks.crownOpenEdges,0,'Crown and back hair must form a closed continuous surface');
   assert.ok(checks.hairlineDepth<.025,'The narrow forehead tip must not project forward like a fin');
-  assert.equal(checks.hairLocks,29);
+  assert.equal(checks.hairLocks,0,'The continuous hair surface must not have detached root locks');
   assert.ok(checks.outwardFace,'Face winding must point outward');
   assert.equal(checks.cameraIntersections,0,'Camera passes through the face');
   assert.ok(checks.minimumCameraGap>.025,'Camera is too close to the face');

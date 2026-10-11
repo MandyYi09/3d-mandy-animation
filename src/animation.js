@@ -13,10 +13,13 @@ export const CHAPTERS = [
 const smooth = (t) => t*t*t*(t*(t*6-15)+10);
 const tiny = .00001;
 
-function aimArm(pose, side, target) {
+function aimArm(pose, side, target, wristRoll = 0) {
   const sign=side==='Left'?-1:1;
   const shoulder=new THREE.Vector3(...pose[`${side}Arm`].p);
-  const upperRest=new THREE.Vector3(0,-.46,.018),lowerRest=new THREE.Vector3(0,-.45,.02);
+  const upperRest=new THREE.Vector3(0,-.46,.018);
+  // Account for the palm offset after rolling the wrist, so the hand keeps
+  // its contact with the prop instead of orbiting away from the grip.
+  const lowerRest=new THREE.Vector3(0,-.12,.02).applyAxisAngle(new THREE.Vector3(0,1,0),wristRoll).add(new THREE.Vector3(0,-.33,0));
   const l1=upperRest.length(),l2=lowerRest.length();
   const delta=target.clone().sub(shoulder),distance=Math.min(delta.length(),l1+l2-.001),direction=delta.normalize();
   const along=(l1*l1-l2*l2+distance*distance)/(2*distance);
@@ -26,7 +29,7 @@ function aimArm(pose, side, target) {
   const lower=new THREE.Quaternion().setFromUnitVectors(lowerRest.normalize(),target.clone().sub(elbow).normalize());
   const localLower=upper.clone().invert().multiply(lower);
   const angles=q=>{const e=new THREE.Euler().setFromQuaternion(q);return [e.x,e.y,e.z];};
-  pose[`${side}Arm`].r=angles(upper);pose[`${side}Forearm`].r=angles(localLower);pose[`${side}Hand`].r=[0,0,0];
+  pose[`${side}Arm`].r=angles(upper);pose[`${side}Forearm`].r=angles(localLower);pose[`${side}Hand`].r=[0,wristRoll,0];
 }
 
 function worldToTorso(point,pose){
@@ -115,7 +118,7 @@ function poseFor(activity, time) {
       const oarRotation=[0,s*(.47*Math.cos(phase)-.06),s*.07*Math.sin(phase)];
       pose[`${side}Oar`].r=oarRotation;
       const grip=new THREE.Vector3(-s*.55,.25,0).applyEuler(new THREE.Euler(...oarRotation)).add(new THREE.Vector3(s*.70,1.04+bob,.53));
-      aimArm(pose,side,worldToTorso(grip,pose));
+      aimArm(pose,side,worldToTorso(grip,pose),Math.PI);
     }
     pose.RowingRig.s=[1,1,1];pose.RowingRig.p=[0,bob,-.15];pose.DisplayBase.s=[tiny,tiny,tiny];
   } else if(activity==='photography') {
