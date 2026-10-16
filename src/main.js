@@ -3,11 +3,11 @@ import { createMandyExperience } from './experience.js';
 
 const $=(s)=>document.querySelector(s);
 const labels={
-  hello:{number:'01 / THE EVERYDAY ME',title:'Hey, I’m Mandy.',note:'GOOD ENERGY.<br>BIG POSSIBILITIES.',scribble:'hello, you!'},
-  tennis:{number:'02 / ON THE COURT',title:'Game, set, Mandy.',note:'A LITTLE FOCUS.<br>A LOT OF FUN.',scribble:'your serve!'},
-  teach:{number:'03 / IN MY ELEMENT',title:'Stay curious.',note:'BIG IDEAS.<br>ENDLESS CURIOSITY.',scribble:'what if…?'},
-  rowing:{number:'04 / ON THE WATER',title:'Find my rhythm.',note:'ONE STROKE.<br>THEN THE NEXT.',scribble:'keep flowing!'},
-  photography:{number:'05 / THROUGH MY LENS',title:'A different perspective.',note:'NOTICE THE LITTLE THINGS.<br>CAPTURE THE FEELING.',scribble:'say cheese!'},
+  hello:{title:'Hey, I’m Mandy.',note:'GOOD ENERGY.<br>BIG POSSIBILITIES.'},
+  tennis:{title:'Game, set, Mandy.',note:'A LITTLE FOCUS.<br>A LOT OF FUN.'},
+  teach:{title:'Stay curious.',note:'BIG IDEAS.<br>ENDLESS CURIOSITY.'},
+  rowing:{title:'Find my rhythm.',note:'ONE STROKE.<br>THEN THE NEXT.'},
+  photography:{title:'A different perspective.',note:'NOTICE THE LITTLE THINGS.<br>CAPTURE THE FEELING.'},
 };
 const pauseIcon='<svg viewBox="0 0 20 20"><path d="M7 5v10M13 5v10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>';
 const playIcon='<svg viewBox="0 0 20 20"><path d="m7 4 9 6-9 6z" fill="currentColor"/></svg>';
@@ -21,8 +21,7 @@ try{
     $('.progress-track').setAttribute('aria-valuenow',time.toFixed(1));$('.progress-track').setAttribute('aria-valuemax',duration);
     if(lastPlaying!==playing){$('#play-toggle').innerHTML=playing?pauseIcon:playIcon;$('#play-toggle').setAttribute('aria-label',playing?'Pause animation':'Play animation');lastPlaying=playing;}
     if(lastChapter!==chapter&&labels[chapter]){
-      const label=labels[chapter];$('#scene-number').textContent=label.number;$('#scene-title').textContent=label.title;$('#side-note').innerHTML=label.note;
-      $('.scribble').firstChild.textContent=label.scribble;
+      const label=labels[chapter];$('#side-note').innerHTML=label.note;
       document.querySelectorAll('[data-activity]').forEach(button=>{const active=button.dataset.activity===chapter;button.classList.toggle('active',active);button.setAttribute('aria-pressed',active);});lastChapter=chapter;
     }
   }});
