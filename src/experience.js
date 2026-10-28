@@ -3,10 +3,10 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { createCharacter } from './character.js';
-import { createAnimations, getChapterAt, ACTIVITY_CLIPS } from './animation.js';
+import { createAnimations, createStoryTimeline, getChapterAt, ACTIVITY_CLIPS } from './animation.js';
 
 /** Mount the complete animation in any element. Call dispose() when unmounting. */
-export async function createMandyExperience(container,{autoplay=true,onProgress=()=>{},transparent=true,playbackRate=1,interactive=true,framing='scene'}={}){
+export async function createMandyExperience(container,{autoplay=true,onProgress=()=>{},transparent=true,playbackRate=1,interactive=true,framing='scene',chapterOrder}={}){
   const homeFraming=framing==='home';
   const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'low-power',preserveDrawingBuffer:true});
   // Keep CSS dimensions independent of the high-DPI drawing buffer.
@@ -37,7 +37,8 @@ export async function createMandyExperience(container,{autoplay=true,onProgress=
   const rim=new THREE.DirectionalLight(0xffdfad,1.4);rim.position.set(0,5,-3);scene.add(rim);
   const floor=new THREE.Mesh(new THREE.PlaneGeometry(30,30),new THREE.ShadowMaterial({opacity:.13}));floor.rotation.x=-Math.PI/2;floor.position.y=-.033;floor.receiveShadow=true;scene.add(floor);
   const model=await createCharacter();scene.add(model.world);
-  const clips=createAnimations();model.world.animations=clips;
+  const chapters=createStoryTimeline(chapterOrder);
+  const clips=createAnimations(chapters);model.world.animations=clips;
   const mixer=new THREE.AnimationMixer(model.world);const actions=Object.fromEntries(clips.map(c=>[c.name,mixer.clipAction(c)]));
   const rate=Number.isFinite(playbackRate)?THREE.MathUtils.clamp(playbackRate,.5,2):1;
   mixer.timeScale=rate;
@@ -71,7 +72,7 @@ export async function createMandyExperience(container,{autoplay=true,onProgress=
     if(playing){mixer.update(dt);elapsed+=dt*rate;}
     updateFraming();
     controls.update();renderer.render(scene,camera);
-    onProgress({time:current.time,duration:current.getClip().duration,playing,mode,chapter:mode==='story'?getChapterAt(current.time):mode});
+    onProgress({time:current.time,duration:current.getClip().duration,playing,mode,chapter:mode==='story'?getChapterAt(current.time,chapters):mode});
   });
   const play=(activity='story',{transition=true}={})=>{
     const key=ACTIVITY_CLIPS[activity];

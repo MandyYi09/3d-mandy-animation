@@ -1,3 +1,21 @@
+# Current About page animation
+
+The portfolio now mounts the character in `about.html` through
+`js/about-mandy.js`. After changing the character, export the GLB, render the
+poster, run `npm run build`, then run
+`python3 integration/my-website/sync-animation.py`.
+This updates the About module import, preload, embed, model, and fallback poster.
+It preserves portfolio content and the standalone project redirect, and backs up
+changed entry files before writing. Hashed bundle URLs refresh browser caches.
+
+The About page passes `chapterOrder` to keep its sequence:
+hello → rowing → learning → photography → tennis. The standalone default order
+remains unchanged. Run `scripts/check-about-integration.mjs` against the portfolio
+server with the same browser environment variables as the exporter.
+
+The older homepage installer below is retained for reference; do not run it
+against the current portfolio layout.
+
 # Homepage integration
 
 The character is the first carousel slide in `my-website/index.html`, followed by

@@ -6,9 +6,9 @@ const server=await createServer({server:{host:'127.0.0.1',port:5199,strictPort:t
 let browser;
 try{
   await server.listen();
-  browser=await chromium.launch({headless:true,...(process.env.CHROME_PATH?{executablePath:process.env.CHROME_PATH}:{}),args:['--enable-webgl','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+  browser=await chromium.launch({headless:true,...(process.env.CHROME_PATH?{executablePath:process.env.CHROME_PATH}:{}),args:['--enable-webgl',`--use-angle=${process.env.RENDER_BACKEND||'swiftshader'}`,'--enable-unsafe-swiftshader']});
   const page=await browser.newPage({viewport:{width:800,height:800}});
-  await page.goto('http://127.0.0.1:5199/embed.html?activity=idle&autoplay=0',{waitUntil:'domcontentloaded'});
+  await page.goto('http://127.0.0.1:5199/embed.html?activity=idle&autoplay=0',{waitUntil:'domcontentloaded',timeout:120000});
   await page.waitForFunction(()=>!!window.mandy,null,{timeout:60000});
   await page.evaluate(()=>window.mandy.renderer.setAnimationLoop(null));
   await mkdir('artifacts',{recursive:true});
@@ -40,7 +40,7 @@ try{
       }
       return [...edges.values()].filter(count=>count!==2).length;
     };
-    const hairLocks=[];model.hair.traverse(o=>{if(o.name==='HairLock')hairLocks.push(o);});
+    const hairLocks=[];model.hair.traverse(o=>{if(o.name==='HairLock'||o.name==='HairCurl')hairLocks.push(o);});
     let cameraIntersections=0, minimumCameraGap=Infinity, maxGripError=0;
     const mixer=new AnimationMixer(model.world);
     const action=mixer.clipAction(clips.find(c=>c.name==='Photography')).play();
@@ -77,7 +77,7 @@ try{
     const hairlineHeight=Math.max(...Array.from({length:73},(_,i)=>positions.getY(i)))+3.18;
     const hairlineDepth=Math.max(...Array.from({length:73},(_,i)=>positions.getZ(i)))-Math.min(...Array.from({length:73},(_,i)=>positions.getZ(i)));
     return {crownHeight,hairlineHeight,headOpenEdges:openEdges([face.geometry,shell.geometry]), crownOpenEdges:openEdges([model.hair.getObjectByName('HairCrown').geometry]), hairlineDepth,
-      unsealedLocks:hairLocks.filter(o=>openEdges([o.geometry])!==0).length, hairLocks:hairLocks.length,
+      unsealedLocks:hairLocks.filter(o=>openEdges([o.geometry])!==0).length, hairLocks:hairLocks.filter(o=>o.name==='HairLock').length, hairCurls:hairLocks.filter(o=>o.name==='HairCurl').length,
       outwardFace:face.material.side===FrontSide&&Array.from({length:normals.count},(_,i)=>normals.getZ(i)).every(z=>z>0),
       cameraIntersections,minimumCameraGap,maxGripError};
   });

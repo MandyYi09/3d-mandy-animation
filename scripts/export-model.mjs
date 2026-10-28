@@ -14,10 +14,10 @@ const server = await createServer({ server: { host: '127.0.0.1', port: 5198, str
 let browser;
 try {
   await server.listen();
-  browser = await chromium.launch({ headless: true, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}), args: ['--enable-webgl','--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
+  browser = await chromium.launch({ headless: true, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}), args: ['--enable-webgl',`--use-angle=${process.env.RENDER_BACKEND||'swiftshader'}`,'--enable-unsafe-swiftshader'] });
   const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
   page.on('pageerror', error => console.error(error));
-  await page.goto('http://127.0.0.1:5198/embed.html');
+  await page.goto('http://127.0.0.1:5198/embed.html',{waitUntil:'domcontentloaded',timeout:120000});
   await page.waitForFunction(() => !!window.mandy, null, { timeout: 60000 });
   const base64 = await page.evaluate(async () => {
     const buffer = await window.mandy.exportGLB();

@@ -142,10 +142,20 @@ function poseFor(activity, time) {
   return pose;
 }
 
-function storyPose(time) {
+export function createStoryTimeline(order=CHAPTERS.map(chapter=>chapter.id)) {
+  if(!Array.isArray(order)||order.length!==CHAPTERS.length||new Set(order).size!==CHAPTERS.length||order.some(id=>!CHAPTERS.some(chapter=>chapter.id===id)))throw new Error('Invalid chapter order');
+  let start=0;
+  return order.map(id=>{
+    const original=CHAPTERS.find(chapter=>chapter.id===id);
+    const end=start+original.end-original.start;
+    const chapter={id,start,end};start=end;return chapter;
+  });
+}
+
+function storyPose(time, chapters=CHAPTERS) {
   time=time%STORY_DURATION;
-  const i=CHAPTERS.findIndex(c=>time>=c.start&&time<c.end);
-  const current=CHAPTERS[i], next=CHAPTERS[(i+1)%CHAPTERS.length];
+  const i=chapters.findIndex(c=>time>=c.start&&time<c.end);
+  const current=chapters[i], next=chapters[(i+1)%chapters.length];
   const blendStart=current.end-1.8;
   const a=poseFor(current.id,(time-current.start)%PERIODS[current.id]);
   if(time<blendStart)return a;
@@ -181,10 +191,10 @@ function sampleClip(name,duration,sampler) {
   return new THREE.AnimationClip(name,duration,tracks).optimize();
 }
 
-export function createAnimations(){
-  return [sampleClip('Story',STORY_DURATION,storyPose),...Object.entries(PERIODS).map(([id,period])=>sampleClip(ACTIVITY_CLIPS[id],period,t=>poseFor(id,t)))];
+export function createAnimations(chapters=CHAPTERS){
+  return [sampleClip('Story',STORY_DURATION,time=>storyPose(time,chapters)),...Object.entries(PERIODS).map(([id,period])=>sampleClip(ACTIVITY_CLIPS[id],period,t=>poseFor(id,t)))];
 }
 
-export function getChapterAt(time){
-  const t=time%STORY_DURATION;return CHAPTERS.find(c=>t>=c.start&&t<c.end)?.id||'hello';
+export function getChapterAt(time,chapters=CHAPTERS){
+  const t=time%STORY_DURATION;return chapters.find(c=>t>=c.start&&t<c.end)?.id||'hello';
 }

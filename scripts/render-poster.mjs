@@ -5,9 +5,9 @@ const server = await createServer({server:{host:'127.0.0.1',port:5199,strictPort
 let browser;
 try {
   await server.listen();
-  browser = await chromium.launch({headless:true, ...(process.env.CHROME_PATH?{executablePath:process.env.CHROME_PATH}:{}),args:['--enable-webgl','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+  browser = await chromium.launch({headless:true, ...(process.env.CHROME_PATH?{executablePath:process.env.CHROME_PATH}:{}),args:['--enable-webgl',`--use-angle=${process.env.RENDER_BACKEND||'swiftshader'}`,'--enable-unsafe-swiftshader']});
   const page = await browser.newPage({viewport:{width:800,height:640},deviceScaleFactor:1});
-  await page.goto('http://127.0.0.1:5199/embed.html?presentation=home&autoplay=0');
+  await page.goto('http://127.0.0.1:5199/embed.html?presentation=home&autoplay=0',{waitUntil:'domcontentloaded',timeout:120000});
   await page.waitForFunction(() => !!window.mandy);
   await page.evaluate(() => {
     const m = window.mandy;

@@ -191,7 +191,7 @@ function buildHairCrown(hair, face) {
       // A narrow recessed part, fading precisely into the original hairline.
       const part = Math.exp(-((u/.022)**2)) * Math.sin(Math.PI*Math.min(1,v/.8));
       point.y -= .018*part;
-      point.y += .06 * Math.cos(v*Math.PI*18 + .6) * THREE.MathUtils.smoothstep(width,.84,1);
+      point.y += .025 * Math.cos(v*Math.PI*18 + .6) * THREE.MathUtils.smoothstep(width,.84,1);
       point.x += Math.sign(u) * .012 * Math.sin(flow) * THREE.MathUtils.smoothstep(width,.55,.85);
       positions.push(...point.toArray());
       uvs.push(i/across,j/along);
@@ -218,6 +218,43 @@ function buildHairCrown(hair, face) {
     const outer=THREE.MathUtils.smoothstep(v,0,.16)*(1-THREE.MathUtils.smoothstep(v,.60,.80));
     positions[i*3]+=Math.sign(positions[i*3])*fullness*(-.10*inner+.06*outer);
     positions[i*3+2]+=.045*fullness*(1-THREE.MathUtils.smoothstep(v,.42,.65));
+    // Lift the lengths behind the ears into a soft, rounded silhouette.
+    // Fade to zero at the portrait seam and crown so the roots stay joined.
+    const earVolume=THREE.MathUtils.smoothstep(y,2.30,2.82)
+      *(1-THREE.MathUtils.smoothstep(y,3.35,3.85));
+    const sideVolume=THREE.MathUtils.smoothstep(width,.30,.65);
+    const behindEar=THREE.MathUtils.smoothstep(v,.06,.27)
+      *(1-THREE.MathUtils.smoothstep(v,.78,.98));
+    positions[i*3]+=Math.sign(positions[i*3])*.055*earVolume*sideVolume*behindEar;
+    positions[i*3+2]-=.065*earVolume*THREE.MathUtils.smoothstep(v,.28,.55)
+      *(1-THREE.MathUtils.smoothstep(v,.85,1));
+    // Shape a single S curl into the continuous lengths: an inward neck,
+    // a rounded lower bend, then a returning tip. UVs follow the same surface.
+    const curlWeight=(1-THREE.MathUtils.smoothstep(y,2.60,2.96))
+      *THREE.MathUtils.smoothstep(Math.abs(positions[i*3]),.38,.62);
+    const curlPhase=(2.92-y)*9.6+v*.40+(positions[i*3]<0?.12:0);
+    positions[i*3]-=Math.sign(positions[i*3])*curlWeight*.085*Math.sin(curlPhase);
+    positions[i*3+2]+=curlWeight*.045*Math.cos(curlPhase);
+
+    // A modest, even increase in volume below the crown. Keep the portrait
+    // seam fixed; let the free lengths and back expand with their existing curl.
+    const lowerVolume=1-THREE.MathUtils.smoothstep(y,3.35,3.92);
+    const freeSurface=THREE.MathUtils.smoothstep(v,0,.15);
+    const freeEnds=1-THREE.MathUtils.smoothstep(y,2.98,3.20);
+    const volume=lowerVolume*Math.max(freeSurface,freeEnds);
+    positions[i*3]*=1+.075*volume;
+    positions[i*3+2]=-.10+(positions[i*3+2]+.10)*(1+.10*volume);
+
+    // Sweep the intact front edge away from the cheek at ear height.
+    // Only the hanging edge moves; the attached temple seam stays in place.
+    const earSweep=THREE.MathUtils.smoothstep(y,2.64,3.00)
+      *(1-THREE.MathUtils.smoothstep(y,3.12,3.46))
+      *THREE.MathUtils.smoothstep(width,.50,.60)
+      *(1-THREE.MathUtils.smoothstep(v,.12,.38));
+    positions[i*3]+=Math.sign(positions[i*3])*.078*earSweep;
+    positions[i*3+2]-=.075*earSweep;
+
+
   }
   // Close the scalp behind the visible surface; all perimeter edges are shared.
   const count = positions.length / 3;
@@ -278,7 +315,7 @@ function buildHairCrown(hair, face) {
   }
   context.putImageData(atlas,0,0);
   const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
-  const material=new THREE.MeshStandardMaterial({map:texture,color:'#808080',roughness:.8,
+  const material=new THREE.MeshStandardMaterial({map:texture,color:'#808080',roughness:.72,
     emissiveMap:texture,emissive:'#ffffff',emissiveIntensity:.6,vertexColors:true});
   mesh(hair,geometry,material).name='HairCrown';
 }
@@ -286,6 +323,19 @@ function buildHairCrown(hair, face) {
 function buildHair(head, face) {
   const hair = group(head, 'Hair', [0, -3.18, 0]);
   buildHairCrown(hair, face);
+  // Keep the volume at ear height, then gather the continuous lengths
+  // toward the shoulders together so the ends cannot flare beyond the roots.
+  hair.traverse(object => {
+    if (!object.isMesh) return;
+    const positions = object.geometry.getAttribute('position');
+    for (let i=0;i<positions.count;i++) {
+      const gather=1-THREE.MathUtils.smoothstep(positions.getY(i),2.18,3.13);
+      positions.setX(i,positions.getX(i)*(1-.055*gather));
+      positions.setZ(i,-.10+(positions.getZ(i)+.10)*(1-.06*gather));
+    }
+    positions.needsUpdate=true;
+    object.geometry.computeVertexNormals();
+  });
   // The portrait and its stitched shell share the same upper boundary as the
   // hair. Moving that boundary together avoids overlaps or a floating fringe.
   for(const object of [face,head.getObjectByName('HeadShell')]) {
